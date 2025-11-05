@@ -2,7 +2,6 @@ from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score, p
 import numpy as np
 import pandas as pd
 from math import log, sqrt, cos, asin, log10, pi
-import xarray as xr
 from sklearn.utils import resample
 from numpy.random import uniform
 
