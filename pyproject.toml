@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skverify"
+version = "0.1.0"  # You'll need to set this or use dynamic versioning
+description = "Compute bootstrapped Scikit-Learn metrics and produce various classification and regression diagrams"
+readme = "README.md"
+requires-python = ">=3.8, <4"
+license = {text = "MIT"}  # Adjust if different
+authors = [
+    {name = "monte-flora"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "scikit-learn",
+    "scipy",
+    "shapely",
+    "descartes",
+    "matplotlib",
+    "seaborn",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+]
+
+[tool.setuptools]
+packages = ["skverify"]
+
+[tool.setuptools.package-dir]
+skverify = "skverify"
