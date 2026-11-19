@@ -461,7 +461,8 @@ class VerificationDiagram:
                 table_data, rows, columns = to_table_data(scores)
             rows = [f' {r} ' for r in rows]
            
-            columns = [column_translator.get(c,c) for c in columns]
+            if table_text is None:  # preformatted tables keep their column labels
+                columns = [column_translator.get(c,c) for c in columns]
         
             n_rows, n_cols= np.shape(table_data)
             n_rows = max(1, n_rows)
