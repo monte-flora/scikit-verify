@@ -136,7 +136,7 @@ def norm_csi(y_true, y_score, known_skew, pos_label=1, sample_weight=None):
     """
     Compute the normalized modified critical success index. 
     """
-    new_skew = np.mean(y_true)
+    new_skew = np.average(y_true, weights=sample_weight)  # weighted base rate when sample_weight is given
     precision, recall, _ = precision_recall_curve(
             y_true, y_score, pos_label=pos_label, sample_weight=sample_weight)
     if known_skew is not None:
@@ -175,7 +175,7 @@ def norm_aupdc(y_true, y_score, known_skew, *, average="macro", pos_label=1,
     
     Boyd, 2012: Unachievable Region in Precision-Recall Space and Its Effect on Empirical Evaluation, ArXiv
     """
-    new_skew = np.mean(y_true)
+    new_skew = np.average(y_true, weights=sample_weight)  # weighted base rate when sample_weight is given
 
     y_type = type_of_target(y_true)
     if y_type == "multilabel-indicator" and pos_label != 1:

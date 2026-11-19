@@ -513,24 +513,25 @@ class VerificationDiagram:
         return ax
             
 def plot_table(ax, table_data, row_labels, column_labels, row_colors, col_colors, bbox,
-        fontsize=3., extra=0.7, colWidth=0.16, alpha=0.2 ):
+        fontsize=3., extra=0.7, colWidth=0.16, alpha=0.2, label_width=0.2):
     """
-    Adds a table with the scores for each model.
+    Adds a table with the scores for each model. The row labels are the table's first column, so the whole table
+    (labels included) fills ``bbox`` (axes fraction); ``label_width`` = the label column's share of its width.
     """
-    col_colors = plt.cm.BuPu(np.full(len(column_labels), 0.1))
-    the_table = ax.table(cellText=table_data,
-               rowLabels=row_labels,
-               colLabels=column_labels,
-               colWidths = [colWidth]*len(column_labels),
-               rowLoc='right',
-               cellLoc = 'center' , 
+    n_cols = len(column_labels)
+    cells = [[lbl] + list(row) for lbl, row in zip(row_labels, np.asarray(table_data, dtype=object))]
+    col_colors = ['none'] + list(plt.cm.BuPu(np.full(n_cols, 0.1)))
+    the_table = ax.table(cellText=cells,
+               colLabels=[''] + list(column_labels),
+               colWidths=[label_width] + [(1 - label_width) / n_cols] * n_cols,
+               cellLoc='center',
                colColours=col_colors,
                alpha=alpha,
                zorder=5,
                bbox=bbox
                 )
     the_table.auto_set_font_size(False)
-    # color by the cell's row (get_celld keys: (row, col); row 0 = column labels, col -1 = row labels)
+    # color by the cell's row (get_celld keys: (row, col); row 0 = column labels, col 0 = row labels)
     for (r, c), cell in the_table.get_celld().items():
         cell.set_alpha(alpha)
         cell_txt = cell.get_text().get_text()
@@ -538,10 +539,13 @@ def plot_table(ax, table_data, row_labels, column_labels, row_colors, col_colors
         if r == 0:  # column labels
             cell.get_text().set_color('k')
             cell.get_text().set_fontsize(fontsize - 2 if len(cell_txt) > 4 else fontsize - extra)
-        elif c == -1:  # row labels: the row's color, right-aligned
+            if c == 0:
+                cell.set_edgecolor('none')
+        elif c == 0:  # row labels: the row's color, right-aligned
             cell.get_text().set_color(color)
             cell.get_text().set_fontsize(fontsize)
             cell.get_text().set_ha('right')
+            cell._loc = 'right'
         elif cell_txt.strip() and is_number(cell_txt.split()[0]):
             cell.get_text().set_fontsize(fontsize + extra)
             cell.get_text().set_color(color)
