@@ -503,7 +503,9 @@ class VerificationDiagram:
                     row_labels=rows,
                     column_labels=columns,
                     col_colors= None,
-                    row_colors = {name : c for name,c in zip(rows, line_colors)},
+                    row_colors = ({f' {r} ': c for r, c in table_text['row_colors'].items()}
+                                  if table_text is not None and 'row_colors' in table_text
+                                  else {name : c for name,c in zip(rows, line_colors)}),
                     bbox=table_bbox,
                     colWidth=0.16,
                     fontsize=table_fontsize, alpha=table_alpha)
@@ -528,41 +530,24 @@ def plot_table(ax, table_data, row_labels, column_labels, row_colors, col_colors
                bbox=bbox
                 )
     the_table.auto_set_font_size(False)
-    table_props = the_table.properties()
-    table_cells = table_props['children']
-    i=0; idx = 0
-    for cell in table_cells: 
-        # Set transparency
+    # color by the cell's row (get_celld keys: (row, col); row 0 = column labels, col -1 = row labels)
+    for (r, c), cell in the_table.get_celld().items():
         cell.set_alpha(alpha)
-        
         cell_txt = cell.get_text().get_text()
-
-        if i % len(column_labels) == 0 and i > 0:
-            idx += 1
-        
-        if cell_txt.strip() and is_number(cell_txt.split()[0]) and cell_txt not in column_labels:
-            cell.get_text().set_fontsize(fontsize + extra)
-            cell.get_text().set_color(row_colors[row_labels[idx]]) 
-            
-        else:
-            cell.get_text().set_fontsize(fontsize-extra)
-            
-        if cell_txt in column_labels:
-            cell.get_text().set_color('k') 
-            if len(cell.get_text().__dict__['_text']) > 4:
-                cell.get_text().set_fontsize(fontsize-2)
-        else:
-            pass
-        
-        if cell_txt in row_labels:
-            # Change the row labels to have the right color and 
-            # make them right-aligned
-            cell.get_text().set_color(row_colors[cell_txt]) 
+        color = row_colors.get(row_labels[r - 1], 'k') if 1 <= r <= len(row_labels) else 'k'
+        if r == 0:  # column labels
+            cell.get_text().set_color('k')
+            cell.get_text().set_fontsize(fontsize - 2 if len(cell_txt) > 4 else fontsize - extra)
+        elif c == -1:  # row labels: the row's color, right-aligned
+            cell.get_text().set_color(color)
             cell.get_text().set_fontsize(fontsize)
             cell.get_text().set_ha('right')
-        
-        i+=1
-        
+        elif cell_txt.strip() and is_number(cell_txt.split()[0]):
+            cell.get_text().set_fontsize(fontsize + extra)
+            cell.get_text().set_color(color)
+        else:
+            cell.get_text().set_fontsize(fontsize - extra)
+
     for key, cell in the_table.get_celld().items():
         cell.set_linewidth(0.125)
         
