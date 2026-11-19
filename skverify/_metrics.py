@@ -686,7 +686,7 @@ def reliability_curve(y_true, y_pred, n_bins=10, return_indices=False):
     mean_fcst_probs, event_frequency = [], []
     indices = []
     for i in range(n_bins):
-        idx = np.where(bin_indices==i+1)
+        idx = np.where(bin_indices==i)
         mean_fcst_probs.append(np.mean(y_pred[idx]) if len(idx[0]) > 0 else np.nan)
         event_frequency.append(np.sum(y_true[idx]) / len(idx[0]) if len(idx[0]) > 0 else np.nan)
         indices.append(idx)
