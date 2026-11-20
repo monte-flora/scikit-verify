@@ -24,8 +24,6 @@ classifiers = [
 dependencies = [
     "scikit-learn",
     "scipy",
-    "shapely",
-    "descartes",
     "matplotlib",
     "seaborn",
     "numpy",

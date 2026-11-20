@@ -1,13 +1,9 @@
-import shapely.geometry
-
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np 
 import pandas as pd
-from descartes import PolygonPatch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-import seaborn as sns
 import math
 
 import warnings
@@ -78,6 +74,8 @@ class VerificationDiagram:
     
     def _plot_inset_ax(self, ax, line_colors):
         """ Plot the histogram associated with the reliability diagram """
+        import seaborn as sns  # only the raw-prediction histogram needs seaborn
+
         ax.grid(False)   
         bins = np.arange(0,1.1,0.1)
         df = pd.DataFrame(self._y_pred) 
@@ -96,6 +94,26 @@ class VerificationDiagram:
         
         return ax
     
+    def _plot_inset_counts(self, ax, hist_counts, line_colors):
+        """Forecast-frequency histogram (log y) from precomputed counts: hist_counts = (bin_edges, {name: counts})."""
+        ax.grid(False)
+        edges, counts = hist_counts
+        edges = np.asarray(edges, dtype=float)
+        if not isinstance(counts, dict):
+            counts = {'Label': counts}
+        n = len(counts)
+        width = np.diff(edges) * 0.7 / n
+        for i, ((name, c), color) in enumerate(zip(counts.items(), line_colors)):
+            c = np.asarray(c, dtype=float)
+            ax.bar(edges[:-1] + np.diff(edges) * 0.15 + i * width, np.where(c > 0, c, np.nan), width=width,
+                   align='edge', color=color, alpha=0.1, edgecolor='k', linewidth=0.5)
+        ax.set_yscale('log')
+        ax.set_ylabel(r'Samples', fontsize=10)
+        top = max(float(np.nanmax(np.asarray(c, dtype=float))) for c in counts.values())
+        if top > 0:
+            ax.set_ylim(1, 10 ** (math.floor(math.log10(top)) + 2))
+        return ax
+
     def _plot_reliability_uncertainty(self, ax, line_colors):
         d=0.05
         for i, (name, color) in enumerate(zip(self._y_pred.keys(), line_colors)):
@@ -162,11 +180,22 @@ class VerificationDiagram:
         ax.set_xlim([0,1])
         ax.set_ylim([0,1])
         ax.plot([0,1], [0,1], ls='dashed', color='k', alpha=0.7)
+        climo = diagram_kwargs.get('climo', None)
+        if climo is not None:
+            # Attributes diagram: climatology (no-resolution) lines and the no-skill line
+            # (halfway between perfect reliability and climatology; BSS > 0 above it, shaded).
+            xs = np.array([0, 1])
+            ax.axhline(climo, color='gray', lw=0.8, ls=':')
+            ax.axvline(climo, color='gray', lw=0.8, ls=':')
+            no_skill = 0.5 * (xs + climo)
+            ax.plot(xs, no_skill, color='gray', lw=0.8, ls='-.')
+            ax.fill_between([climo, 1], [climo, 0.5 * (1 + climo)], [climo, 1], color='gray', alpha=0.08, lw=0)
+            ax.fill_between([0, climo], [0, 0], [climo, 0.5 * climo], color='gray', alpha=0.08, lw=0)
         if add_axis_labels:
             ax.set_xlabel('Mean Forecast Probability', fontsize=fontsize)
             ax.set_ylabel('Conditional Event Frequency', fontsize=fontsize)
         
-        if self._y_pred is not None:
+        if self._y_pred is not None or diagram_kwargs.get('hist_counts') is not None:
             self._right_ax = self.make_twin_ax(ax)
      
         return ax 
@@ -189,10 +218,14 @@ class VerificationDiagram:
             pod,pofd=np.meshgrid(x,x)
             pss = pod-pofd
             contours = ax.contourf(pofd, pod, pss, levels=x, cmap=cmap, alpha=alpha)
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes('right', size='5%', pad=0.05)
-            fig = ax.get_figure()
-            fig.colorbar(contours, cax=cax, label='Pierce Skill Score (POD-POFD)')
+            if diagram_kwargs.get('add_colorbar', True):
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes('right', size='5%', pad=0.05)
+                fig = ax.get_figure()
+                cb = fig.colorbar(contours, cax=cax)
+                cb.set_label('Peirce Skill Score (POD-POFD)', fontsize=fontsize-2)
+        else:
+            contours = None
             
         # Plot random classifier/no-skill line 
         ax.plot(x,x,linestyle="dashed", color="gray", linewidth=0.8)
@@ -232,13 +265,14 @@ class VerificationDiagram:
                     alpha=0.9
                     )
         ax.clabel(biasLines, levels=[0.5, 1.0, 1.5, 2.0, 4.0], fontsize=6, inline=True, fmt="%1.1f")
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes('right', size='5%', pad=0.05)
-        fig = ax.get_figure()
-        cb = fig.colorbar(cf, cax=cax)
+        if diagram_kwargs.get('add_colorbar', True):
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig = ax.get_figure()
+            cb = fig.colorbar(cf, cax=cax)
 
-        # Set the fontsize of the colorbar label
-        cb.set_label('Critical Success Index (CSI)', fontsize=fontsize-2)
+            # Set the fontsize of the colorbar label
+            cb.set_label('Critical Success Index (CSI)', fontsize=fontsize-2)
         
         return ax, cf 
         
@@ -249,7 +283,8 @@ class VerificationDiagram:
              line_colors=None,
              diagram_kwargs={}, 
              plot_kwargs={}, ax=None, add_table=True, table_bbox=None, 
-             table_fontsize=8, table_alpha=0.5, pred=None): 
+             table_fontsize=8, table_alpha=0.5, pred=None,
+             line_x=None, line_y=None, table_text=None, hist_counts=None, band_alpha=0.4): 
         """
         Plot a performance, attribute, or ROC Diagram. 
         
@@ -268,6 +303,19 @@ class VerificationDiagram:
                 to create confidence intervals. 
                       
             add_dots : True/False
+
+            line_x, line_y : 1-d array or dict (optional)
+                The curve to draw (e.g., the full-sample curve) instead of the mean of
+                the bootstrap curves in x, y; x, y then only set the confidence band.
+
+            table_text : dict (optional)
+                Preformatted table, e.g. with confidence intervals:
+                {'rows': [...], 'columns': [...], 'cells': [[str, ...], ...]}.
+                Replaces the table built from the mean of ``scores``.
+
+            hist_counts : (bin_edges, counts or {name: counts}) (optional)
+                Reliability diagram only: forecast-frequency histogram from
+                precomputed counts (no raw predictions needed).
             
         """
         if scores is not None:
@@ -303,8 +351,10 @@ class VerificationDiagram:
         elif diagram == 'roc':
             ax, contours = self._make_roc(ax=ax, **diagram_kwargs)
         elif diagram == 'reliability':
-            ax = self._make_reliability(ax=ax, **diagram_kwargs)
-            if self._y_pred is not None:
+            ax = self._make_reliability(ax=ax, hist_counts=hist_counts, **diagram_kwargs)
+            if hist_counts is not None:
+                self._plot_inset_counts(self._right_ax, hist_counts, line_colors)
+            elif self._y_pred is not None:
                 self._plot_inset_ax(self._right_ax, line_colors)
                 
             if self._y_pred is not None and self._y_true is not None:
@@ -316,6 +366,9 @@ class VerificationDiagram:
         if not isinstance(x, dict):
             x = {'Label' : x}
             y = {'Label' : y}
+        if line_x is not None and not isinstance(line_x, dict):
+            line_x = {k: line_x for k in x}
+            line_y = {k: line_y for k in x}
         
         keys = x.keys()
         
@@ -338,6 +391,10 @@ class VerificationDiagram:
                     _x = np.nanmean(_x, axis=0)
                     _y = np.nanmean(_y, axis=0)
                     
+            if line_x is not None and line_label in line_x:
+                _x = np.asarray(line_x[line_label], dtype=float)
+                _y = np.asarray(line_y[line_label], dtype=float)
+
             line_label = None if line_label == 'Label' else line_label
     
             ax.plot(_x, _y, label=line_label,**matplot_kwargs)
@@ -388,7 +445,7 @@ class VerificationDiagram:
                 )   
             
                 ax.fill_between(xci, yci, 
-                 color=color, alpha=0.4, interpolate=False)
+                 color=color, alpha=band_alpha, interpolate=False, lw=0)
             
 
         
@@ -396,11 +453,16 @@ class VerificationDiagram:
         # The code will attempt to determine the best location. 
         column_translator = {"NAUDPC" : 'NAPD', 'AUPDC' : 'APD'}
         
-        if scores is not None:
-            table_data, rows, columns = to_table_data(scores)
+        if scores is not None or table_text is not None:
+            if table_text is not None:
+                table_data = np.array(table_text['cells'], dtype=object)
+                rows, columns = list(table_text['rows']), list(table_text['columns'])
+            else:
+                table_data, rows, columns = to_table_data(scores)
             rows = [f' {r} ' for r in rows]
            
-            columns = [column_translator.get(c,c) for c in columns]
+            if table_text is None:  # preformatted tables keep their column labels
+                columns = [column_translator.get(c,c) for c in columns]
         
             n_rows, n_cols= np.shape(table_data)
             n_rows = max(1, n_rows)
@@ -411,7 +473,7 @@ class VerificationDiagram:
 
             if diagram == 'performance':
                 if csi is None: 
-                    max_csi = np.max(calc_csi(_x, _y))
+                    max_csi = np.nanmax(calc_csi(np.array(_x, dtype=float), np.array(_y, dtype=float)))
                 else:
                     max_csi = np.max(csi)
                         
@@ -442,7 +504,9 @@ class VerificationDiagram:
                     row_labels=rows,
                     column_labels=columns,
                     col_colors= None,
-                    row_colors = {name : c for name,c in zip(rows, line_colors)},
+                    row_colors = ({f' {r} ': c for r, c in table_text['row_colors'].items()}
+                                  if table_text is not None and 'row_colors' in table_text
+                                  else {name : c for name,c in zip(rows, line_colors)}),
                     bbox=table_bbox,
                     colWidth=0.16,
                     fontsize=table_fontsize, alpha=table_alpha)
@@ -450,58 +514,45 @@ class VerificationDiagram:
         return ax
             
 def plot_table(ax, table_data, row_labels, column_labels, row_colors, col_colors, bbox,
-        fontsize=3., extra=0.7, colWidth=0.16, alpha=0.2 ):
+        fontsize=3., extra=0.7, colWidth=0.16, alpha=0.2, label_width=0.2):
     """
-    Adds a table with the scores for each model.
+    Adds a table with the scores for each model. The row labels are the table's first column, so the whole table
+    (labels included) fills ``bbox`` (axes fraction); ``label_width`` = the label column's share of its width.
     """
-    col_colors = plt.cm.BuPu(np.full(len(column_labels), 0.1))
-    the_table = ax.table(cellText=table_data,
-               rowLabels=row_labels,
-               colLabels=column_labels,
-               colWidths = [colWidth]*len(column_labels),
-               rowLoc='right',
-               cellLoc = 'center' , 
+    n_cols = len(column_labels)
+    cells = [[lbl] + list(row) for lbl, row in zip(row_labels, np.asarray(table_data, dtype=object))]
+    col_colors = ['none'] + list(plt.cm.BuPu(np.full(n_cols, 0.1)))
+    the_table = ax.table(cellText=cells,
+               colLabels=[''] + list(column_labels),
+               colWidths=[label_width] + [(1 - label_width) / n_cols] * n_cols,
+               cellLoc='center',
                colColours=col_colors,
                alpha=alpha,
                zorder=5,
                bbox=bbox
                 )
     the_table.auto_set_font_size(False)
-    table_props = the_table.properties()
-    table_cells = table_props['children']
-    i=0; idx = 0
-    for cell in table_cells: 
-        # Set transparency
+    # color by the cell's row (get_celld keys: (row, col); row 0 = column labels, col 0 = row labels)
+    for (r, c), cell in the_table.get_celld().items():
         cell.set_alpha(alpha)
-        
         cell_txt = cell.get_text().get_text()
-
-        if i % len(column_labels) == 0 and i > 0:
-            idx += 1
-        
-        if is_number(cell_txt):
-            cell.get_text().set_fontsize(fontsize + extra)
-            cell.get_text().set_color(row_colors[row_labels[idx]]) 
-            
-        else:
-            cell.get_text().set_fontsize(fontsize-extra)
-            
-        if cell_txt in column_labels:
-            cell.get_text().set_color('k') 
-            if len(cell.get_text().__dict__['_text']) > 4:
-                cell.get_text().set_fontsize(fontsize-2)
-        else:
-            pass
-        
-        if cell_txt in row_labels:
-            # Change the row labels to have the right color and 
-            # make them right-aligned
-            cell.get_text().set_color(row_colors[cell_txt]) 
+        color = row_colors.get(row_labels[r - 1], 'k') if 1 <= r <= len(row_labels) else 'k'
+        if r == 0:  # column labels
+            cell.get_text().set_color('k')
+            cell.get_text().set_fontsize(fontsize - 2 if len(cell_txt) > 4 else fontsize - extra)
+            if c == 0:
+                cell.set_edgecolor('none')
+        elif c == 0:  # row labels: the row's color, right-aligned
+            cell.get_text().set_color(color)
             cell.get_text().set_fontsize(fontsize)
             cell.get_text().set_ha('right')
-        
-        i+=1
-        
+            cell._loc = 'right'
+        elif cell_txt.strip() and is_number(cell_txt.split()[0]):
+            cell.get_text().set_fontsize(fontsize + extra)
+            cell.get_text().set_color(color)
+        else:
+            cell.get_text().set_fontsize(fontsize - extra)
+
     for key, cell in the_table.get_celld().items():
         cell.set_linewidth(0.125)
         

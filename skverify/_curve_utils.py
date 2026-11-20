@@ -7,12 +7,6 @@ from sklearn.metrics import (precision_recall_curve,
 from sklearn.metrics import roc_auc_score
 from sklearn.utils import resample
 from scipy import interpolate
-import shapely.geometry
-from descartes import PolygonPatch
-
-import warnings
-from shapely.errors import ShapelyDeprecationWarning
-warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning) 
 
 from ._metrics import (reliability_curve, 
                        performance_curve,
@@ -319,6 +313,8 @@ def vertex_arrays_to_polygon_object(
     :return: polygon_object: `shapely.geometry.Polygon` object.
     :raises: ValueError: if the polygon is invalid.
     """
+
+    import shapely.geometry  # optional: only this helper needs shapely
 
     exterior_coords_as_list = _vertex_arrays_to_list(
         exterior_x_coords, exterior_y_coords
